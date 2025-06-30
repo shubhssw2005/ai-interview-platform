@@ -26,7 +26,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-app.use(express.static('dist'));
+// app.use(express.static('dist'));
 
 // Logging middleware
 app.use((req, res, next) => {
@@ -244,11 +244,6 @@ app.post('/api/conversation/:id/end', async (req, res) => {
       });
     }
   }
-});
-
-// Serve React app for all other routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
 // Error handling middleware
