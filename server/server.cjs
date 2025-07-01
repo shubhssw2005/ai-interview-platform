@@ -24,11 +24,14 @@ if (!TAVUS_API_KEY || !PERSONA_ID || !REPLICA_ID) {
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  'https://interviewos.netlify.app'
+  'https://interviewos.netlify.app',
+  // Add your custom domain below if you have one:
+  // 'https://your-custom-domain.com'
 ];
 
 app.use(cors({
   origin: (origin, callback) => {
+    console.log('CORS request from:', origin);
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
