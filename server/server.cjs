@@ -13,6 +13,12 @@ const TAVUS_BASE_URL = process.env.TAVUS_BASE_URL || 'https://tavusapi.com';
 const PERSONA_ID = process.env.TAVUS_PERSONA_ID || 'p760a9e07b91';
 const REPLICA_ID = process.env.TAVUS_REPLICA_ID || 'rb17cf590e15';
 
+// Mask sensitive info for logs
+function mask(str) {
+  if (!str) return '';
+  return str.length <= 6 ? '***' : str.slice(0, 2) + '***' + str.slice(-2);
+}
+
 // Validate required environment variables
 if (!TAVUS_API_KEY || !PERSONA_ID || !REPLICA_ID) {
   console.error('Error: Missing required environment variables');
@@ -74,7 +80,9 @@ async function createConversation(personaId, replicaId, conversationalContext = 
   };
 
   try {
-    console.log('Creating conversation with data:', JSON.stringify(conversationData, null, 2));
+    // Mask persona_id and replica_id in logs
+    const logData = { ...conversationData, persona_id: mask(personaId), replica_id: mask(replicaId) };
+    console.log('Creating conversation with data:', JSON.stringify(logData, null, 2));
     
     const response = await fetch(`${TAVUS_BASE_URL}/v2/conversations`, {
       method: 'POST',
@@ -87,7 +95,8 @@ async function createConversation(personaId, replicaId, conversationalContext = 
 
     const responseText = await response.text();
     console.log('Tavus API response status:', response.status);
-    console.log('Tavus API response:', responseText);
+    // Do not log sensitive info in response
+    console.log('Tavus API response:', response.status === 200 ? '[OK]' : responseText);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${responseText}`);
@@ -95,7 +104,8 @@ async function createConversation(personaId, replicaId, conversationalContext = 
 
     return JSON.parse(responseText);
   } catch (error) {
-    console.error('Error creating conversation:', error);
+    // Mask persona_id and replica_id in error logs
+    console.error('Error creating conversation:', error.message.replace(personaId, mask(personaId)).replace(replicaId, mask(replicaId)));
     throw error;
   }
 }

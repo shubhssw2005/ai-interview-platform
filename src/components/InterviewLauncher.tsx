@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Video, Mic, Phone, Loader2, AlertCircle, CheckCircle2, X, Sparkles } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Phone, Loader2, AlertCircle, CheckCircle2, X, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
+import { Tooltip } from 'react-tooltip';
 
 interface InterviewLauncherProps {
   onBack: () => void;
@@ -19,8 +20,12 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
   const [showTips, setShowTips] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const apiBase = import.meta.env.VITE_API_URL || '';
-  const [captions, setCaptions] = useState<string[]>([]);
+  const [captions, setCaptions] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
   const [cameraOn, setCameraOn] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [liveAICaption, setLiveAICaption] = useState('');
+  const [tavusStatus, setTavusStatus] = useState<'waiting' | 'receiving'>('waiting');
+  const [liveUserCaption, setLiveUserCaption] = useState('');
 
   const startInterview = async () => {
     setLoading(true);
@@ -85,26 +90,70 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
   }, []);
 
   useEffect(() => {
-    if (!meetingUrl) return;
-    // Simulate receiving captions every few seconds
-    const phrases = [
-      'Welcome to your AI interview session.',
-      'Please introduce yourself.',
-      'Tell me about your experience.',
-      'What are your career goals?',
-      'Thank you for sharing!'
-    ];
-    let idx = 0;
-    const interval = setInterval(() => {
-      setCaptions((prev) => [...prev.slice(-4), phrases[idx % phrases.length]]);
-      idx++;
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [meetingUrl]);
+    const handler = (event: MessageEvent) => {
+      if (event.data && event.data.event && event.data.event === 'app-message') {
+        const msg = event.data;
+        if (msg.data && msg.data.role === 'assistant' && msg.data.content) {
+          setTavusStatus('receiving');
+          setLiveAICaption(msg.data.content);
+          setCaptions((prev) => [...prev.slice(-8), { role: 'assistant', content: msg.data.content }]);
+        }
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
 
-  const handleCameraToggle = () => {
-    setCameraOn((on) => !on);
-    // Note: Real camera control is not possible with iframe from Tavus
+  // Browser SpeechRecognition for user mic captions
+  useEffect(() => {
+    // @ts-ignore
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setLiveUserCaption('SpeechRecognition not supported in this browser.');
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      setLiveUserCaption(interim);
+      if (final) {
+        setCaptions((prev) => [...prev.slice(-8), { role: 'user', content: final }]);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      setLiveUserCaption('Speech recognition error: ' + event.error);
+    };
+
+    recognition.start();
+
+    return () => {
+      recognition.stop();
+    };
+  }, []);
+
+  const handleCameraToggle = () => setCameraOn((on) => !on);
+
+  const handleFullscreen = () => {
+    setIsFullscreen((v) => !v);
+    const elem = document.documentElement;
+    if (!isFullscreen) {
+      if (elem.requestFullscreen) elem.requestFullscreen();
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+    }
   };
 
   if (loading || !meetingUrl) {
@@ -163,105 +212,75 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col">
-      {/* Sticky Header */}
-      <header className="sticky top-0 z-20 bg-slate-800 border-b border-slate-700 p-4 shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={endInterview}
-              className="flex items-center space-x-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>End Interview</span>
-            </button>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-white font-medium">Live AI Interview</span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium border border-green-500/30">
-              Connected
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Video Area */}
+    <div className={`min-h-screen bg-gradient-to-br from-black via-slate-900 to-indigo-950 flex flex-col ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+      {/* Main Video Area - Cinematic Fullscreen */}
       <main className="flex-1 flex flex-col items-center justify-center relative">
         <div className="w-full h-full flex-1 flex items-center justify-center">
-          <div className="relative w-full max-w-5xl aspect-video bg-slate-800 rounded-xl overflow-hidden shadow-2xl">
+          <div className="relative w-full max-w-7xl aspect-video bg-black rounded-3xl overflow-hidden shadow-[0_0_80px_10px_rgba(0,0,0,0.7)]"
+            style={{ minHeight: '40vw', maxHeight: '90vh' }}>
             <iframe
               ref={iframeRef}
               src={meetingUrl}
-              className="w-full h-full min-h-[400px] sm:min-h-[500px] md:min-h-[600px] border-0"
+              className="w-full h-full border-0"
               allow="camera; microphone; fullscreen; display-capture; autoplay"
               title="AI Interview Session"
+              style={{ background: 'black' }}
             />
-            {/* Captions Area */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-11/12 max-w-3xl bg-black/70 text-white rounded-lg p-4 text-lg shadow-lg flex flex-col items-center space-y-1 pointer-events-none">
-              {captions.map((line, i) => (
-                <div key={i} className="w-full text-center">{line}</div>
-              ))}
+            {/* Overlay Controls - Responsive */}
+            <div className="absolute top-4 right-4 flex gap-2 z-20">
+              <button onClick={handleFullscreen} className="p-2 bg-black/60 rounded-full hover:bg-black/80 text-white shadow-lg" aria-label="Toggle Fullscreen">
+                {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+              </button>
+              <button onClick={endInterview} className="p-2 bg-red-600 hover:bg-red-700 rounded-full text-white shadow-lg" aria-label="End Interview">
+                <Phone className="w-5 h-5" />
+              </button>
             </div>
-            {/* Floating Tips Panel */}
-            {showTips && (
-              <div className="absolute top-6 left-6 z-30 max-w-xs bg-black/70 backdrop-blur-md rounded-xl p-5 text-white shadow-xl animate-fade-in pointer-events-auto">
-                <button
-                  className="absolute top-2 right-2 text-white/70 hover:text-white"
-                  onClick={() => setShowTips(false)}
-                  aria-label="Close tips"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-                <h3 className="font-semibold mb-2">Interview Tips:</h3>
-                <ul className="text-sm space-y-1 text-white/80">
-                  <li>• Speak clearly and maintain eye contact with the camera</li>
-                  <li>• Take your time to think before answering</li>
-                  <li>• Ask questions about the role and company</li>
-                  <li>• Be authentic and let your personality shine</li>
-                </ul>
+            <div className="absolute top-4 left-4 flex gap-2 z-20">
+              <button
+                onClick={handleCameraToggle}
+                className={`p-2 rounded-full shadow-lg ${cameraOn ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'} text-white`}
+                aria-label={cameraOn ? 'Camera On' : 'Camera Off'}
+                data-tooltip-id="camera-tooltip"
+                data-tooltip-content="Camera control is managed by the AI interview system."
+              >
+                <Video className="w-5 h-5" />
+              </button>
+              <Tooltip id="camera-tooltip" />
+            </div>
+            {/* Status indicators for debugging */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex gap-4 pointer-events-none">
+              <div className={`px-3 py-1 rounded-full text-xs font-bold ${tavusStatus === 'receiving' ? 'bg-green-700 text-white' : 'bg-yellow-600 text-white'}`}>AI: {tavusStatus}</div>
+            </div>
+            {/* Live Caption Bar - Responsive */}
+            {((captions.length > 0 && captions.some(c => c.content && c.content.trim())) || liveUserCaption || liveAICaption) ? (
+              <div className="absolute bottom-0 left-0 w-full z-30 flex flex-col items-center pointer-events-none px-2 pb-2 gap-1">
+                {[...captions.slice(-2)].filter(cap => cap.content && cap.content.trim()).map((cap, i) => (
+                  <div
+                    key={i}
+                    className={`w-full max-w-4xl bg-black/80 text-lg md:text-2xl font-semibold rounded-t-2xl px-2 md:px-8 py-2 md:py-4 mb-0 shadow-2xl text-center animate-fade-in overflow-x-auto whitespace-nowrap break-keep ${cap.role === 'user' ? 'text-blue-200' : 'text-green-200'}`}
+                    style={{ marginBottom: i === 0 ? 0 : 4 }}
+                  >
+                    <span className="font-bold mr-2">{cap.role === 'user' ? 'You:' : 'AI:'}</span> {cap.content}
+                  </div>
+                ))}
+                {liveUserCaption && (
+                  <div className="w-full max-w-4xl bg-black/80 text-lg md:text-2xl font-semibold rounded-t-2xl px-2 md:px-8 py-2 md:py-4 mb-0 shadow-2xl text-center animate-fade-in overflow-x-auto whitespace-nowrap break-keep text-blue-200">
+                    <span className="font-bold mr-2">You:</span> {liveUserCaption}
+                  </div>
+                )}
+                {liveAICaption && <div className="w-full max-w-4xl bg-black/80 text-lg md:text-2xl font-semibold rounded-t-2xl px-2 md:px-8 py-2 md:py-4 mb-0 shadow-2xl text-center animate-fade-in overflow-x-auto whitespace-pre-line break-words text-green-200"><span className="font-bold mr-2">AI:</span> {liveAICaption}</div>}
+              </div>
+            ) : (
+              <div className="absolute bottom-0 left-0 w-full z-30 flex flex-col items-center pointer-events-none px-2 pb-2 gap-1">
+                <div className="w-full max-w-4xl bg-black/80 text-lg md:text-2xl font-semibold rounded-t-2xl px-2 md:px-8 py-2 md:py-4 mb-0 shadow-2xl text-center animate-fade-in overflow-x-auto whitespace-pre-line break-words text-yellow-200">
+                  {'Waiting for user or AI captions...'}
+                </div>
               </div>
             )}
           </div>
         </div>
       </main>
-
-      {/* Sticky Footer Controls */}
-      <footer className="sticky bottom-0 z-20 bg-slate-800 border-t border-slate-700 p-4 shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <div className="flex flex-wrap items-center space-x-4">
-            {/* Camera Toggle Button */}
-            <button
-              onClick={handleCameraToggle}
-              className={`flex items-center space-x-2 px-4 py-2 ${cameraOn ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'} text-white rounded-lg transition-colors mb-2`}
-            >
-              <Video className="w-4 h-4" />
-              <span>{cameraOn ? 'Camera On' : 'Camera Off'}</span>
-            </button>
-            {/* Mic (static, for demo) */}
-            <div className="flex items-center space-x-2 px-4 py-2 bg-slate-700 rounded-lg mb-2">
-              <Mic className="w-4 h-4 text-green-400" />
-              <span className="text-white text-sm">Microphone Active</span>
-            </div>
-            <button
-              onClick={endInterview}
-              className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors mb-2"
-            >
-              <Phone className="w-4 h-4" />
-              <span>End Interview</span>
-            </button>
-            <button
-              onClick={() => setShowTips((v) => !v)}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors mb-2"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>{showTips ? 'Hide Tips' : 'Show Tips'}</span>
-            </button>
-          </div>
-        </div>
-      </footer>
+      {/* Optionally, add tips or other overlays here */}
     </div>
   );
 };
