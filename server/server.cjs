@@ -34,6 +34,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// Serve static files from the React app (dist folder)
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// Catch-all handler to serve index.html for any route not handled above
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist', 'index.html'));
+});
+
 // Create a conversation
 async function createConversation(personaId, replicaId, conversationalContext = '') {
   const conversationData = {
