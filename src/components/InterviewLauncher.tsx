@@ -18,12 +18,15 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [showTips, setShowTips] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const apiBase = import.meta.env.VITE_API_URL || '';
+  const [captions, setCaptions] = useState<string[]>([]);
+  const [cameraOn, setCameraOn] = useState(true);
 
   const startInterview = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/create-conversation', {
+      const response = await fetch(`${apiBase}/api/create-conversation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -53,7 +56,7 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
   const endInterview = async () => {
     if (conversationId) {
       try {
-        await fetch(`/api/conversation/${conversationId}/end`, {
+        await fetch(`${apiBase}/api/conversation/${conversationId}/end`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -70,7 +73,7 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
     startInterview();
     return () => {
       if (conversationId) {
-        fetch(`/api/conversation/${conversationId}/end`, {
+        fetch(`${apiBase}/api/conversation/${conversationId}/end`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -80,6 +83,29 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
     };
     // eslint-disable-next-line
   }, []);
+
+  useEffect(() => {
+    if (!meetingUrl) return;
+    // Simulate receiving captions every few seconds
+    const phrases = [
+      'Welcome to your AI interview session.',
+      'Please introduce yourself.',
+      'Tell me about your experience.',
+      'What are your career goals?',
+      'Thank you for sharing!'
+    ];
+    let idx = 0;
+    const interval = setInterval(() => {
+      setCaptions((prev) => [...prev.slice(-4), phrases[idx % phrases.length]]);
+      idx++;
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [meetingUrl]);
+
+  const handleCameraToggle = () => {
+    setCameraOn((on) => !on);
+    // Note: Real camera control is not possible with iframe from Tavus
+  };
 
   if (loading || !meetingUrl) {
     return (
@@ -173,6 +199,12 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
               allow="camera; microphone; fullscreen; display-capture; autoplay"
               title="AI Interview Session"
             />
+            {/* Captions Area */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-11/12 max-w-3xl bg-black/70 text-white rounded-lg p-4 text-lg shadow-lg flex flex-col items-center space-y-1 pointer-events-none">
+              {captions.map((line, i) => (
+                <div key={i} className="w-full text-center">{line}</div>
+              ))}
+            </div>
             {/* Floating Tips Panel */}
             {showTips && (
               <div className="absolute top-6 left-6 z-30 max-w-xs bg-black/70 backdrop-blur-md rounded-xl p-5 text-white shadow-xl animate-fade-in pointer-events-auto">
@@ -200,10 +232,15 @@ const InterviewLauncher: React.FC<InterviewLauncherProps> = ({ onBack }) => {
       <footer className="sticky bottom-0 z-20 bg-slate-800 border-t border-slate-700 p-4 shadow-lg">
         <div className="max-w-7xl mx-auto flex items-center justify-center">
           <div className="flex flex-wrap items-center space-x-4">
-            <div className="flex items-center space-x-2 px-4 py-2 bg-slate-700 rounded-lg mb-2">
-              <Video className="w-4 h-4 text-green-400" />
-              <span className="text-white text-sm">Camera Active</span>
-            </div>
+            {/* Camera Toggle Button */}
+            <button
+              onClick={handleCameraToggle}
+              className={`flex items-center space-x-2 px-4 py-2 ${cameraOn ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'} text-white rounded-lg transition-colors mb-2`}
+            >
+              <Video className="w-4 h-4" />
+              <span>{cameraOn ? 'Camera On' : 'Camera Off'}</span>
+            </button>
+            {/* Mic (static, for demo) */}
             <div className="flex items-center space-x-2 px-4 py-2 bg-slate-700 rounded-lg mb-2">
               <Mic className="w-4 h-4 text-green-400" />
               <span className="text-white text-sm">Microphone Active</span>
