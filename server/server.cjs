@@ -25,6 +25,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://interviewos.netlify.app',
+  'https://interviewos.onrender.com',
   // Add your custom domain below if you have one:
   // 'https://your-custom-domain.com'
 ];
