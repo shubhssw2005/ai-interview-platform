@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server/server.cjs",
-    "server:dev": "nodemon server/server.cjs"
+    "server:dev": "nodemon server/server.cjs",
+    "prestart": "npm run build",
+    "start": "node server/server.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
